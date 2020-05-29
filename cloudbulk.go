@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/csv"
 	"flag"
 	"fmt"
@@ -66,23 +67,23 @@ func main() {
 
 	if target == "azure" {
 		mappingFile := source + "_" + target + ".txt"
-		writeAzureUser(sourceRecords, mappingFile)
+		writeAzureUser(sourceRecords, mappingFile, targetFile)
 	} else if target == "aws" {
 
 	}
 }
 
-func writeAzureUser(sourceRecords []map[string]string, mappingFile string) {
-	f, err := os.Open(mappingFile)
+func writeAzureUser(sourceRecords []map[string]string, mappingFile string, targetFile string) {
+	mf, err := os.Open(mappingFile)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	defer f.Close()
+	defer mf.Close()
 
 	//Create header mapping between two formats
 	headerMap := make(map[string]string)
-	scanner := bufio.NewScanner(f)
+	scanner := bufio.NewScanner(mf)
 	for scanner.Scan() {
 		line := scanner.Text()
 		ss := strings.Split(line, "=")
@@ -91,10 +92,12 @@ func writeAzureUser(sourceRecords []map[string]string, mappingFile string) {
 		}
 	}
 
+	//Display mappings
 	for k, v := range headerMap {
 		fmt.Println("mapping", k, "to", v)
 	}
 
+	//Create new records
 	var newRecords []map[string]string
 	azureHeaders := strings.Split(azureHeader, ",")
 	for _, sourceRerord := range sourceRecords {
@@ -113,11 +116,40 @@ func writeAzureUser(sourceRecords []map[string]string, mappingFile string) {
 		newRecords = append(newRecords, newRecord)
 	}
 
+	//Display new records
 	fmt.Println("result: ")
-	fmt.Println("==================================================")
+	fmt.Println("==newRecords================================================")
 	for _, newRecord := range newRecords {
 		fmt.Println(newRecord)
 	}
+
+	//Write to file
+	of, err := os.Create(targetFile)
+	if err != nil {
+		fmt.Println(err)
+		of.Close()
+		return
+	}
+
+	//Write header first
+	fmt.Fprintln(of, azureHeader)
+
+	for _, newRecord := range newRecords {
+		var buffer bytes.Buffer
+		for _, header := range azureHeaders {
+			value := newRecord[header]
+			if strings.TrimSpace(value) != "" {
+				fmt.Println(header, "=", value)
+				buffer.WriteString(value)
+			}
+			buffer.WriteString(",")
+		}
+
+		line := buffer.String()
+		fmt.Println(line)
+		fmt.Fprintln(of, line)
+	}
+	err = of.Close()
 }
 
 func readGcpUsr(gcpFile string) []map[string]string {
@@ -145,7 +177,7 @@ func readGcpUsr(gcpFile string) []map[string]string {
 
 		lineNumber = lineNumber + 1
 		//Skip header line
-		if lineNumber == 0 {
+		if lineNumber == 1 {
 			continue
 		}
 
