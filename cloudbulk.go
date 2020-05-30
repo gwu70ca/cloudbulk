@@ -12,8 +12,9 @@ import (
 	"strings"
 )
 
-var gcpHeader = `First Name [Required],Last Name [Required],Email Address [Required],Password [Required],Password Hash Function [UPLOAD ONLY],Org Unit Path [Required],New Primary Email [UPLOAD ONLY],Status [READ ONLY],Last Sign In [READ ONLY],Recovery Email,Home Secondary Email,Work Secondary Email,Recovery Phone [MUST BE IN THE E.164 FORMAT],Work Phone,Home Phone,Mobile Phone,Work Address,Home Address,Employee ID,Employee Type,Employee Title,Manager Email,Department,Cost Center,2sv Enrolled [READ ONLY],2sv Enforced [READ ONLY],Building ID,Floor Name,Floor Section,Email Usage [READ ONLY],Drive Usage [READ ONLY],Total Storage [READ ONLY],Change Password at Next Sign-In,New Status [UPLOAD ONLY]`
-var azureHeader = `userPrincipalName,displayName,surname,mail,givenName,objectId,userType,jobTitle,department,accountEnabled,usageLocation,streetAddress,state,country,physicalDeliveryOfficeName,city,postalCode,telephoneNumber,mobile,authenticationPhoneNumber,authenticationAlternativePhoneNumber,authenticationEmail,alternateEmailAddress,ageGroup,consentProvidedForMinor,legalAgeGroupClassification`
+var gcpInputHeader = `First Name [Required],Last Name [Required],Email Address [Required],Password [Required],Password Hash Function [UPLOAD ONLY],Org Unit Path [Required],New Primary Email [UPLOAD ONLY],Status [READ ONLY],Last Sign In [READ ONLY],Recovery Email,Home Secondary Email,Work Secondary Email,Recovery Phone [MUST BE IN THE E.164 FORMAT],Work Phone,Home Phone,Mobile Phone,Work Address,Home Address,Employee ID,Employee Type,Employee Title,Manager Email,Department,Cost Center,2sv Enrolled [READ ONLY],2sv Enforced [READ ONLY],Building ID,Floor Name,Floor Section,Email Usage [READ ONLY],Drive Usage [READ ONLY],Total Storage [READ ONLY],Change Password at Next Sign-In,New Status [UPLOAD ONLY]`
+var azureInputHeader = `userPrincipalName,displayName,surname,mail,givenName,objectId,userType,jobTitle,department,accountEnabled,usageLocation,streetAddress,state,country,physicalDeliveryOfficeName,city,postalCode,telephoneNumber,mobile,authenticationPhoneNumber,authenticationAlternativePhoneNumber,authenticationEmail,alternateEmailAddress,ageGroup,consentProvidedForMinor,legalAgeGroupClassification`
+var azureOutputHeader = `Name [displayName] Required,User name [userPrincipalName] Required,Initial password [passwordProfile] Required,Block sign in (Yes/No) [accountEnabled] Required,First name [givenName],Last name [surname],Job title [jobTitle],Department [department],Usage location [usageLocation],Street address [streetAddress],State or province [state],Country or region [country],Office [physicalDeliveryOfficeName],City [city],ZIP or postal code [postalCode],Office phone [telephoneNumber],Mobile phone [mobile]`
 
 func check(ptr *string, msg string) bool {
 	//fmt.Println(*ptr)
@@ -66,7 +67,7 @@ func main() {
 	}
 
 	if target == "azure" {
-		mappingFile := source + "_" + target + ".txt"
+		mappingFile := "mapping/" + source + "_to_" + target + ".txt"
 		writeAzureUser(sourceRecords, mappingFile, targetFile)
 	} else if target == "aws" {
 
@@ -88,7 +89,7 @@ func writeAzureUser(sourceRecords []map[string]string, mappingFile string, targe
 		line := scanner.Text()
 		ss := strings.Split(line, "=")
 		if len(ss) > 1 && len(ss[0]) > 0 && len(ss[1]) > 0 {
-			headerMap[ss[1]] = ss[0]
+			headerMap[ss[0]] = ss[1]
 		}
 	}
 
@@ -97,19 +98,39 @@ func writeAzureUser(sourceRecords []map[string]string, mappingFile string, targe
 		fmt.Println("mapping", k, "to", v)
 	}
 
+	fmt.Println()
 	//Create new records
 	var newRecords []map[string]string
-	azureHeaders := strings.Split(azureHeader, ",")
+	azureHeaders := strings.Split(azureOutputHeader, ",")
 	for _, sourceRerord := range sourceRecords {
 		newRecord := make(map[string]string)
 
-		for _, header := range azureHeaders {
-			sourceHeader := headerMap[header]
+		for _, azureHeader := range azureHeaders {
+			fmt.Println("azureHeader:", azureHeader)
+			sourceHeader := headerMap[azureHeader]
+			fmt.Println("sourceHeader:", sourceHeader)
 			if sourceHeader != "" {
-				value := sourceRerord[sourceHeader]
-				if value != "" {
-					newRecord[header] = value
+				if sourceHeader == "No" || sourceHeader == "Yes" {
+					newRecord[azureHeader] = sourceHeader
+				} else {
+					//There could be multiple source headers
+					var buffer bytes.Buffer
+					for _, h := range strings.Split(sourceHeader, "+") {
+						header := strings.TrimSpace(h)
+						value := sourceRerord[header]
+						fmt.Println("\theader:", header, ",v:", value)
+						if value != "" {
+							buffer.WriteString(value)
+							buffer.WriteString(" ")
+						}
+					}
+					newRecord[azureHeader] = strings.TrimSpace(buffer.String())
 				}
+			}
+
+			if strings.HasSuffix(azureHeader, "Required") && newRecord[azureHeader] == "" {
+				// A required field but no value. Use default
+				newRecord[azureHeader] = "default-todo"
 			}
 		}
 
@@ -132,7 +153,8 @@ func writeAzureUser(sourceRecords []map[string]string, mappingFile string, targe
 	}
 
 	//Write header first
-	fmt.Fprintln(of, azureHeader)
+	fmt.Fprintln(of, "version:v1.0\r")
+	fmt.Fprintln(of, azureOutputHeader+"\r")
 
 	for _, newRecord := range newRecords {
 		var buffer bytes.Buffer
@@ -146,21 +168,23 @@ func writeAzureUser(sourceRecords []map[string]string, mappingFile string, targe
 		}
 
 		line := buffer.String()
+		//Remove last ,
+		line = line[:len(line)-1]
 		fmt.Println(line)
-		fmt.Fprintln(of, line)
+		fmt.Fprintln(of, line+"\r")
 	}
 	err = of.Close()
 }
 
-func readGcpUsr(gcpFile string) []map[string]string {
-	file, err := os.Open(gcpFile)
+func readGcpUsr(gcpCsv string) []map[string]string {
+	file, err := os.Open(gcpCsv)
 	if err != nil {
 		fmt.Println(err)
 		return nil
 	}
 	defer file.Close()
 
-	h := strings.Split(gcpHeader, ",")
+	h := strings.Split(gcpInputHeader, ",")
 
 	r := csv.NewReader(bufio.NewReader(file))
 
@@ -182,12 +206,12 @@ func readGcpUsr(gcpFile string) []map[string]string {
 		}
 
 		m := make(map[string]string)
-		for idx, r := range record {
-			if r == "" {
+		for idx, field := range record {
+			if field == "" {
 				continue
 			}
-			fmt.Println(h[idx], "=", r)
-			m[h[idx]] = r
+			fmt.Println(h[idx], "=", field)
+			m[h[idx]] = field
 		}
 		records = append(records, m)
 		fmt.Println("--------------------------------------------------")

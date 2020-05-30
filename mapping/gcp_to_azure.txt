@@ -1,0 +1,17 @@
+Name [displayName] Required=First Name [Required] + Last Name [Required]
+User name [userPrincipalName] Required=Email Address [Required]
+Initial password [passwordProfile] Required=
+Block sign in (Yes/No) [accountEnabled] Required=No
+First name [givenName]=First Name [Required]
+Last name [surname]=Last Name [Required]
+Job title [jobTitle]=
+Department [department]=Department
+Usage location [usageLocation]=
+Street address [streetAddress]=
+State or province [state]=
+Country or region [country]=
+Office [physicalDeliveryOfficeName]=
+City [city]=
+ZIP or postal code [postalCode]=
+Office phone [telephoneNumber]=Work Phone
+Mobile phone [mobile]=Mobile Phone

@@ -1,3 +1,5 @@
 /cloudbulk.exe
 /gcp.csv
 /azure.csv
+/output/azure.csv
+/input/gcp.csv
