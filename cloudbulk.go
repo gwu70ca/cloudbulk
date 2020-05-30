@@ -25,12 +25,17 @@ func check(ptr *string, msg string) bool {
 	return true
 }
 
+var verbose *bool
+
 func main() {
 	var source, target, sourceFile, targetFile string
+
 	flag.StringVar(&source, "source", "gcp", "Source IdP")
 	flag.StringVar(&target, "target", "azure", "Target IdP")
 	flag.StringVar(&sourceFile, "sourceFile", "", "CSV of source IdP")
 	flag.StringVar(&targetFile, "targetFile", "", "CSV of target IdP")
+
+	verbose = flag.Bool("verbose", false, "Log to console")
 
 	flag.Parse()
 
@@ -95,10 +100,10 @@ func writeAzureUser(sourceRecords []map[string]string, mappingFile string, targe
 
 	//Display mappings
 	for k, v := range headerMap {
-		fmt.Println("mapping", k, "to", v)
+		logToConsole("mapping", k, "to", v)
 	}
 
-	fmt.Println()
+	logToConsole()
 	//Create new records
 	var newRecords []map[string]string
 	azureHeaders := strings.Split(azureOutputHeader, ",")
@@ -106,9 +111,9 @@ func writeAzureUser(sourceRecords []map[string]string, mappingFile string, targe
 		newRecord := make(map[string]string)
 
 		for _, azureHeader := range azureHeaders {
-			fmt.Println("azureHeader:", azureHeader)
+			logToConsole("azureHeader:", azureHeader)
 			sourceHeader := headerMap[azureHeader]
-			fmt.Println("sourceHeader:", sourceHeader)
+			logToConsole("sourceHeader:", sourceHeader)
 			if sourceHeader != "" {
 				if sourceHeader == "No" || sourceHeader == "Yes" {
 					newRecord[azureHeader] = sourceHeader
@@ -118,7 +123,7 @@ func writeAzureUser(sourceRecords []map[string]string, mappingFile string, targe
 					for _, h := range strings.Split(sourceHeader, "+") {
 						header := strings.TrimSpace(h)
 						value := sourceRerord[header]
-						fmt.Println("\theader:", header, ",v:", value)
+						logToConsole("\theader:", header, ",v:", value)
 						if value != "" {
 							buffer.WriteString(value)
 							buffer.WriteString(" ")
@@ -138,11 +143,16 @@ func writeAzureUser(sourceRecords []map[string]string, mappingFile string, targe
 	}
 
 	//Display new records
-	fmt.Println("result: ")
-	fmt.Println("==newRecords================================================")
+	logToConsole("result: ")
+	logToConsole("==newRecords================================================")
 	for _, newRecord := range newRecords {
-		fmt.Println(newRecord)
+		for k, v := range newRecord {
+			logToConsole("\t", k, "=", v)
+		}
+		logToConsole("\t----------")
 	}
+
+	fmt.Println("Generated ", len(newRecords), " records")
 
 	//Write to file
 	of, err := os.Create(targetFile)
@@ -161,7 +171,7 @@ func writeAzureUser(sourceRecords []map[string]string, mappingFile string, targe
 		for _, header := range azureHeaders {
 			value := newRecord[header]
 			if strings.TrimSpace(value) != "" {
-				fmt.Println(header, "=", value)
+				logToConsole(header, "=", value)
 				buffer.WriteString(value)
 			}
 			buffer.WriteString(",")
@@ -170,7 +180,7 @@ func writeAzureUser(sourceRecords []map[string]string, mappingFile string, targe
 		line := buffer.String()
 		//Remove last ,
 		line = line[:len(line)-1]
-		fmt.Println(line)
+		logToConsole(line)
 		fmt.Fprintln(of, line+"\r")
 	}
 	err = of.Close()
@@ -210,11 +220,23 @@ func readGcpUsr(gcpCsv string) []map[string]string {
 			if field == "" {
 				continue
 			}
-			fmt.Println(h[idx], "=", field)
+			logToConsole(h[idx], "=", field)
 			m[h[idx]] = field
 		}
 		records = append(records, m)
-		fmt.Println("--------------------------------------------------")
+		logToConsole("--------------------------------------------------")
 	}
+
+	fmt.Println("Found ", len(records), " rows")
 	return records
+}
+
+func logToConsole(line ...string) {
+	if *verbose {
+		var buffer bytes.Buffer
+		for _, l := range line {
+			buffer.WriteString(l)
+		}
+		fmt.Println(buffer.String())
+	}
 }
